@@ -609,7 +609,8 @@
       addDoc,
       getDocs,
       query,
-      orderBy
+      orderBy,
+      where
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     // ------------ CONFIG (THAY BẰNG CỦA BẠN) ------------
@@ -758,15 +759,20 @@
         currentUser = profile;
       } else {
         currentUser = snap.data();
+        if (currentUser.totalScore == null) {
+          currentUser.totalScore = currentUser.fp ?? 0;
+          await saveUserProfile({ totalScore: currentUser.totalScore });
+        }
         currentUser.uid = user.uid;
+        subjectSeconds = currentUser.subjectSeconds || {};
 
         // Migration: ensure totalScore exists
         if (typeof currentUser.totalScore === "undefined") {
           currentUser.totalScore = currentUser.fp || 0;
+          await saveUserProfile({ totalScore: currentUser.totalScore });
         }
       }
 
-      subjectSeconds[currentSubject] = (subjectSeconds[currentSubject] || 0) + targetSec;
       userSubjects = currentUser.subjects || ["Toán", "Tiếng Anh", "Lý thuyết"];
 
       streak = currentUser.streak || 0;
@@ -795,7 +801,7 @@
       };
 
       currentUser = data;
-      currentUser.uid = user.uid;
+      currentUser.uid = currentUser.uid;
 
       await setDoc(userRef, data, { merge: true });
       updateUserUI();
@@ -855,31 +861,42 @@
 
     // ------------ REGISTER ------------
     $("registerBtn").onclick = async () => {
-      const email = $("regEmail").value.trim().toLowerCase();
-      const p1 = $("regPass1").value;
-      const p2 = $("regPass2").value;
+      const email = $("regEmail").value.trim();
+      const pass1 = $("regPass1").value.trim();
+      const pass2 = $("regPass2").value.trim();
       const name = $("regName").value.trim();
 
-      if (!email || !p1 || !p2 || !name)
-        return showToast("Điền đầy đủ thông tin", "warn");
-      if (p1 !== p2)
-        return showToast("Mật khẩu nhập lại không đúng", "warn");
+      if (pass1 !== pass2) {
+        return showToast("Mật khẩu không trùng khớp", "warn");
+      }
 
       try {
-        const cred = await createUserWithEmailAndPassword(auth, email, p1);
+        const cred = await createUserWithEmailAndPassword(auth, email, pass1);
 
-        await ensureUserProfile(cred.user);
+        // Tạo user profile mặc định
+        await setDoc(doc(db, "users", cred.user.uid), {
+          email,
+          displayName: name,
+          avatar: "",
+          fp: 0,
+          totalScore: 0,
+          subjects: ["Toán", "Tiếng Anh", "Lý thuyết"],
+          subjectSeconds: {},
+          chain: 0,
+          streak: 0,
+          lastActiveDay: null,
+          theme: "ocean",
+          createdAt: new Date()
+        });
 
-        currentUser.displayName = name;
-        await saveUserProfile({ displayName: name });
+        // 🔥 Tự đăng nhập
+        await signInWithEmailAndPassword(auth, email, pass1);
 
-        $("authModal").style.display = "none";
-        $("app").style.display = "block";
+        showToast("Đăng ký thành công!", "success");
 
-        updateUserUI();
-        showToast("Đăng ký & đăng nhập thành công!", "success");
       } catch (e) {
-        showToast("Firebase: " + e.message, "warn");
+        console.error(e);
+        showToast("Lỗi khi đăng ký", "warn");
       }
     };
 
@@ -962,58 +979,25 @@
     //                                QUESTS
     // ------------------------------------------------------------------------------
     async function loadQuests() {
-      if (!userRef) return;
+      const q = query(
+        collection(db, "quests"),
+        where("uid", "==", currentUser.uid)
+      );
+      const snap = await getDocs(q);
 
-      const colRef = collection(userRef, "quests");
-      const snap = await getDocs(colRef);
-
-      const qs = [];
-      snap.forEach(d => qs.push({ id: d.id, ...d.data() }));
-
-      renderQuests(qs);
-    }
-
-    function renderQuests(qs) {
-      const box = $("questsList");
-      box.innerHTML = "";
-
-      if (!qs.length) {
-        box.innerHTML = "<div class='mini-text'>Chưa có quest</div>";
-        return;
-      }
-
-      qs.forEach(q => {
-        const row = document.createElement("div");
-
-        row.innerHTML = `
-        <span style="${q.done ? 'text-decoration:line-through;opacity:.6' : ''}">
-          ${q.text}
-        </span>
-        <button class="btn ghost small" data-id="${q.id}">
-          ${q.done ? '⟲' : '✓'}
-        </button>
-      `;
-
-        const btn = row.querySelector("button");
-        btn.onclick = () => toggleQuest(q);
-
-        box.appendChild(row);
+      questsList.innerHTML = "";
+      snap.forEach(doc => {
+        const q = doc.data();
+        renderQuestItem(doc.id, q);
       });
     }
 
     async function toggleQuest(q) {
-      if (!userRef) return;
-
-      const ref = doc(userRef, "quests", q.id);
+      const ref = doc(db, "quests", q.id);
       const newDone = !q.done;
 
-      await setDoc(
-        ref,
-        { text: q.text, done: newDone, createdAt: q.createdAt || new Date() },
-        { merge: true }
-      );
+      await setDoc(ref, { done: newDone }, { merge: true });
 
-      // reward FP
       if (newDone) {
         addFP(5, true);
         await saveUserProfile();
@@ -1026,10 +1010,11 @@
 
     $("addQuestBtn").onclick = async () => {
       const text = $("newQuestText").value.trim();
-      if (!text || !userRef) return;
+      if (!text || !currentUser) return;
 
-      await addDoc(collection(userRef, "quests"), {
-        text,
+      await addDoc(collection(db, "quests"), {
+        uid: currentUser.uid,
+        text: text,
         done: false,
         createdAt: new Date()
       });
@@ -1124,20 +1109,14 @@
     //                                LEADERBOARD (FIX)
     // ------------------------------------------------------------------------------
     async function fetchLeaderboardData() {
-      leaderboardData = [];
+      const q = query(
+        collection(db, "users"),
+        orderBy("totalScore", "desc")
+      );
 
-      const qUsers = query(collection(db, "users"), orderBy("fp", "desc"));
-      const snap = await getDocs(qUsers);
+      const snap = await getDocs(q);
+      leaderboardData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      snap.forEach(d => {
-        const u = d.data();
-        leaderboardData.push({
-          displayName: u.displayName || u.email,
-          fp: u.fp || 0
-        });
-      });
-
-      lbPage = 0;
       renderLeaderboard();
     }
 
@@ -1153,7 +1132,7 @@
         return;
       }
 
-      const totalPages = Math.ceil(leaderboardData.length / LB_PAGE_SIZE);
+      const totalPages = Math.max(1, Math.ceil(leaderboardData.length / LB_PAGE_SIZE));
       if (lbPage >= totalPages) lbPage = totalPages - 1;
 
       const start = lbPage * LB_PAGE_SIZE;
@@ -1165,7 +1144,7 @@
 
         li.innerHTML = `
         <span>${i + 1}. ${u.displayName}</span>
-        <strong style="float:right">${u.fp} FP</strong>
+        <strong style="float:right">${u.totalScore} FP</strong>
       `;
 
         box.appendChild(li);
@@ -1310,8 +1289,11 @@
         if (!lastActiveDay) {
           streak = 1;
         } else {
-          const last = new Date(lastActiveDay);
-          const now = new Date(today);
+          const [y, m, d] = lastActiveDay.split("-");
+          const last = new Date(y, m - 1, d);
+
+          const [y2, m2, d2] = today.split("-");
+          const now = new Date(y2, m2 - 1, d2);
           const diff = Math.round((now - last) / 86400000);
 
           if (diff === 1) streak = (streak || 0) + 1;
