@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FocusED + Firebase</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --accent:#0ea5e9;
+      --bg:linear-gradient(135deg,#06b6d4,#0ea5e9);
+    }
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
+    html,body{margin:0;height:100%;}
+    body{
+      background:var(--bg);
+      color:#fff;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+    .header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+    .brand{display:flex;align-items:center;gap:10px;}
+    .logo{width:40px;height:40px;border-radius:14px;background:rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;font-weight:800;}
+    .title{font-weight:800;font-size:20px;}
+    .container{padding:12px 20px 32px;}
+    .grid{display:flex;flex-wrap:wrap;gap:16px;}
+    .col{flex:1;min-width:280px;}
+    .card{
+      background:rgba(255,255,255,0.09);
+      border-radius:16px;
+      padding:14px 16px;
+      margin-bottom:14px;
+      border:1px solid rgba(255,255,255,0.16);
+      backdrop-filter:blur(10px);
+    }
+    .input{
+      width:100%;
+      padding:8px 10px;
+      border-radius:10px;
+      border:none;
+      margin-top:4px;
+    }
+    .btn{
+      padding:8px 12px;
+      border-radius:10px;
+      border:none;
+      cursor:pointer;
+      font-weight:700;
+      background:linear-gradient(135deg,#06b6d4,#0ea5e9);
+      color:#fff;
+    }
+    .btn.ghost{
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.4);
+    }
+    .btn.small{font-size:12px;padding:6px 10px;}
+    #authModal{
+      position:fixed;inset:0;z-index:9999;
+      background:rgba(0,0,0,0.75);
+      display:flex;align-items:center;justify-content:center;
+    }
+    #authBox{
+      width:100%;max-width:420px;
+      background:rgba(15,23,42,0.98);
+      border-radius:18px;
+      padding:20px 18px;
+      border:1px solid rgba(255,255,255,0.14);
+    }
+    #authTabs{display:flex;gap:6px;margin-bottom:12px;}
+    #authTabs button{flex:1;}
+    .timerCircle{position:relative;width:150px;height:150px;margin-right:10px;}
+    .timerCircle svg{width:100%;height:100%;}
+    .timerCenter{
+      position:absolute;inset:0;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+    }
+    #leaderboardList{list-style:none;margin:0;padding:0;}
+    #leaderboardList li{padding:6px 2px;border-bottom:1px dashed rgba(255,255,255,0.18);font-size:14px;}
+    #questsList > div{display:flex;align-items:center;justify-content:space-between;padding:4px 0;}
+    #toast{
+      position:fixed;right:16px;bottom:16px;
+      padding:8px 12px;border-radius:10px;
+      background:rgba(15,23,42,0.95);
+      color:#fff;font-size:13px;font-weight:600;
+      opacity:0;pointer-events:none;z-index:20000;
+      transition:opacity .2s,transform .2s;
+      transform:translateY(6px);
+    }
+    #lockOverlay{
+      position:fixed;inset:0;z-index:9000;
+      background:rgba(0,0,0,0.85);
+      display:none;align-items:center;justify-content:center;
+      color:#fff;
+    }
+    #lockOverlayBox{
+      background:rgba(15,23,42,0.98);
+      border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,0.2);
+      max-width:320px;text-align:center;
+    }
+    @media(max-width:720px){
+      .grid{flex-direction:column;}
+    }
+  </style>
+</head>
+<body>
+
+<div id="authModal">
+  <div id="authBox">
+    <h2 style="margin:0 0 8px;font-weight:800;">FocusED</h2>
+    <div style="opacity:.8;font-size:13px;margin-bottom:10px;">Đăng nhập để lưu FP, streak và bảng xếp hạng chung</div>
+
+    <div id="authTabs">
+      <button id="tabLogin" class="btn" type="button">Đăng nhập</button>
+      <button id="tabRegister" class="btn ghost" type="button">Đăng ký</button>
+    </div>
+
+    <div id="authLoginForm">
+      <div style="font-size:13px;">Email</div>
+      <input id="loginEmail" class="input" type="email">
+      <div style="font-size:13px;margin-top:8px;">Mật khẩu</div>
+      <input id="loginPass" class="input" type="password">
+      <button id="loginBtn" class="btn" style="margin-top:12px;width:100%;">Đăng nhập</button>
+    </div>
+
+    <div id="authRegisterForm" style="display:none;">
+      <div style="font-size:13px;">Email</div>
+      <input id="regEmail" class="input" type="email">
+      <div style="font-size:13px;margin-top:8px;">Mật khẩu</div>
+      <input id="regPass1" class="input" type="password">
+      <div style="font-size:13px;margin-top:8px;">Nhập lại mật khẩu</div>
+      <input id="regPass2" class="input" type="password">
+      <div style="font-size:13px;margin-top:8px;">Tên hiển thị</div>
+      <input id="regName" class="input" type="text">
+      <button id="registerBtn" class="btn" style="margin-top:12px;width:100%;">Tạo tài khoản</button>
+    </div>
+  </div>
+</div>
+
+<div id="lockOverlay">
+  <div id="lockOverlayBox">
+    <h3>Đang tập trung</h3>
+    <p style="font-size:14px;opacity:.9;">Đừng rời tab hoặc thoát fullscreen trong khi đếm giờ để giữ FP.</p>
+    <button id="unlockBtn" class="btn ghost" type="button">Tôi hiểu</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">FE</div>
+      <div>
+        <div class="title">FocusED</div>
+        <div style="font-size:12px;opacity:.8;">Tập trung • Tích điểm • Đổi thưởng</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="text-align:right;font-size:13px;">
+        <div id="displayName">User</div>
+        <div><span id="fpCount">0</span> FP • Lv <span id="levelBadge">1</span></div>
+      </div>
+      <button id="logoutBtn" class="btn ghost" type="button">Đăng xuất</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:56px;height:56px;border-radius:16px;overflow:hidden;background:rgba(255,255,255,0.1);">
+              <img id="avatarImg" src="" style="width:100%;height:100%;object-fit:cover;">
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:14px;">Chuỗi ngày</div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#f97316,#ea580c);box-shadow:0 0 12px rgba(248,113,113,.8);"></div>
+                <div id="streakText" style="font-weight:700;">0 ngày</div>
+              </div>
+              <div style="font-size:12px;opacity:.8;margin-top:4px;">Hoàn thành ít nhất 1 phiên mỗi ngày</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:700;">Quest hôm nay</div>
+            <div style="font-size:12px;opacity:.8;">Hoàn thành để nhận FP</div>
+          </div>
+          <div id="questsList" style="margin-top:8px;font-size:14px;"></div>
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <input id="newQuestText" class="input" placeholder="Thêm quest...">
+            <button id="addQuestBtn" class="btn ghost small" type="button">Thêm</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:700;margin-bottom:6px;">Bảng xếp hạng</div>
+          <ul id="leaderboardList"></ul>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card" style="display:flex;align-items:center;">
+          <div class="timerCircle">
+            <svg viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.2)" stroke-width="8" fill="none"/>
+              <circle id="progressCircle" cx="50" cy="50" r="45" stroke="#fff" stroke-width="8" fill="none"
+                      stroke-dasharray="282.6" stroke-dashoffset="282.6" stroke-linecap="round"
+                      transform="rotate(-90 50 50)"/>
+            </svg>
+            <div class="timerCenter">
+              <div id="timeLabel" style="font-weight:700;font-size:26px;">25:00</div>
+              <div id="timerSub" style="font-size:13px;opacity:.85;">Sẵn sàng</div>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:13px;">Môn học</div>
+            <select id="subjectSel" class="input">
+              <option value="Toán">Toán</option>
+              <option value="Tiếng Anh">Tiếng Anh</option>
+              <option value="Lý thuyết">Lý thuyết</option>
+            </select>
+
+            <div style="font-size:13px;margin-top:8px;">Thời lượng</div>
+            <select id="durationSel" class="input">
+              <option value="25">25 phút</option>
+              <option value="50">50 phút</option>
+              <option value="15">15 phút</option>
+            </select>
+
+            <div style="margin-top:10px;display:flex;gap:8px;">
+              <button id="startBtn" class="btn" type="button">Bắt đầu</button>
+              <button id="stopBtn" class="btn ghost" type="button">Dừng</button>
+              <button id="skipBtn" class="btn ghost" type="button">Bỏ qua</button>
+            </div>
+
+            <div style="font-size:12px;opacity:.8;margin-top:6px;">Chu kỳ Pomodoro: <span id="cycleInfo">0/4</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:700;">Cửa hàng</div>
+            <div style="font-size:12px;opacity:.8;">Dùng FP để mở lootbox, badge…</div>
+          </div>
+          <div id="storeList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:13px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<audio id="sound-complete" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
+<audio id="sound-fail" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
+<!-- ===================== APP SCRIPT (FIREBASE) ===================== -->
+<script type="module">
+  // ---------------- FIREBASE IMPORTS ----------------
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    getAuth,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    updateDoc,
+    collection,
+    addDoc,
+    getDocs,
+    query,
+    orderBy,
+    limit
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+  // --------------- YOUR FIREBASE CONFIG (THAY BẰNG CỦA BẠN) ---------------
+  const firebaseConfig = {
+    apiKey: "AIzaSyArgIen7ziH4Pr6TJmC294Mi8Pah_D8Seo",
+    authDomain: "focused-app-b6a28.firebaseapp.com",
+    projectId: "focused-app-b6a28",
+    storageBucket: "focused-app-b6a28.firebasestorage.app",
+    messagingSenderId: "764493106086",
+    appId: "1:764493106086:web:ce6ba1f7e7eeb7bb12dd67",
+    measurementId: "G-S8J76NLKHZ"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  // --------------- APP STATE ---------------
+  let currentUser = null;        // object đọc từ Firestore
+  let userDocRef  = null;
+  let subjectSeconds = {};       // {subject: seconds}
+  let streak = 0;
+  let lastActiveDay = null;
+  let chain = 0;
+  let cycleCount = 0;
+  const cyclesGoal = 4;
+
+  let isFocusing = false;
+  let focusTimer = null;
+  let targetSec = 25 * 60;
+  let totalSec  = 0;
+  let currentSubject = "Toán";
+
+  const $ = id => document.getElementById(id);
+
+  function showToast(msg,type="info"){
+    const t = $("toast");
+    if(!t) return;
+    t.innerText = msg;
+    t.style.background = type==="success" ? "rgba(22,163,74,0.95)"
+                     : type==="warn" ? "rgba(239,68,68,0.96)"
+                     : "rgba(15,23,42,0.96)";
+    t.style.opacity = "1";
+    t.style.transform = "translateY(0)";
+    setTimeout(()=>{
+      t.style.opacity = "0";
+      t.style.transform = "translateY(6px)";
+    }, 2200);
+  }
+
+  // ---------------- USER PROFILE IN FIRESTORE ----------------
+  async function ensureUserProfile(user){
+    userDocRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userDocRef);
+    if(!snap.exists()){
+      const profile = {
+        email: user.email,
+        displayName: user.email.split("@")[0],
+        avatar: "",
+        fp: 0,
+        chain: 0,
+        streak: 0,
+        lastActiveDay: null,
+        subjectSeconds: {},
+        createdAt: new Date()
+      };
+      await setDoc(userDocRef, profile);
+      currentUser = profile;
+    } else {
+      currentUser = snap.data();
+    }
+    subjectSeconds = currentUser.subjectSeconds || {};
+    streak = currentUser.streak || 0;
+    lastActiveDay = currentUser.lastActiveDay || null;
+    chain = currentUser.chain || 0;
+    updateUserUI();
+    await loadQuests();
+    await renderLeaderboard();
+  }
+
+  async function saveUserProfile(extra={}) {
+    if(!userDocRef) return;
+    const data = {
+      ...currentUser,
+      subjectSeconds,
+      streak,
+      lastActiveDay,
+      chain,
+      ...extra
+    };
+    currentUser = data;
+    await setDoc(userDocRef, data, { merge:true });
+    updateUserUI();
+  }
+
+  function calcLevel(){
+    const totalSecs = Object.values(subjectSeconds||{}).reduce((s,v)=>s+v,0);
+    return Math.floor(totalSecs / 1800) + 1; // 30 phút = 1 level
+  }
+
+  function updateUserUI(){
+    if(!currentUser){ return; }
+    $("displayName").innerText = currentUser.displayName || currentUser.email;
+    $("fpCount").innerText = currentUser.fp || 0;
+    $("levelBadge").innerText = calcLevel();
+    const avatar = currentUser.avatar || "";
+    $("avatarImg").src = avatar || "https://ui-avatars.com/api/?background=0ea5e9&color=fff&name="+encodeURIComponent(currentUser.displayName||"U");
+    $("streakText").innerText = (streak||0) + " ngày";
+  }
+
+  // ---------------- AUTH UI ----------------
+  function switchAuthTab(tab){
+    if(tab === "login"){
+      $("tabLogin").classList.remove("ghost");
+      $("tabRegister").classList.add("ghost");
+      $("authLoginForm").style.display = "block";
+      $("authRegisterForm").style.display = "none";
+    } else {
+      $("tabRegister").classList.remove("ghost");
+      $("tabLogin").classList.add("ghost");
+      $("authLoginForm").style.display = "none";
+      $("authRegisterForm").style.display = "block";
+    }
+  }
+
+  $("tabLogin").onclick = ()=>switchAuthTab("login");
+  $("tabRegister").onclick = ()=>switchAuthTab("register");
+
+  $("registerBtn").onclick = async () => {
+    const email = $("regEmail").value.trim().toLowerCase();
+    const p1 = $("regPass1").value;
+    const p2 = $("regPass2").value;
+    const name = $("regName").value.trim();
+    if(!email || !p1 || !p2 || !name){
+      showToast("Hãy nhập đầy đủ thông tin","warn"); return;
+    }
+    if(p1 !== p2){
+      showToast("Mật khẩu nhập lại không đúng","warn"); return;
+    }
+    try{
+      const cred = await createUserWithEmailAndPassword(auth, email, p1);
+      await ensureUserProfile(cred.user);
+      currentUser.displayName = name;
+      await saveUserProfile();
+      $("authModal").style.display = "none";
+      $("app").style.display = "block";
+      showToast("Đăng ký thành công","success");
+    }catch(e){
+      showToast(e.message,"warn");
+    }
+  };
+
+  $("loginBtn").onclick = async () => {
+    const email = $("loginEmail").value.trim().toLowerCase();
+    const pass = $("loginPass").value;
+    if(!email || !pass){
+      showToast("Nhập email và mật khẩu","warn"); return;
+    }
+    try{
+      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      await ensureUserProfile(cred.user);
+      $("authModal").style.display = "none";
+      $("app").style.display = "block";
+      showToast("Đăng nhập thành công","success");
+    }catch(e){
+      showToast("Sai email hoặc mật khẩu","warn");
+    }
+  };
+
+  $("logoutBtn").onclick = async () => {
+    await signOut(auth);
+    currentUser = null;
+    userDocRef = null;
+    $("app").style.display = "none";
+    $("authModal").style.display = "flex";
+    showToast("Đã đăng xuất");
+  };
+
+  onAuthStateChanged(auth, async (user)=>{
+    if(user){
+      await ensureUserProfile(user);
+      $("authModal").style.display = "none";
+      $("app").style.display = "block";
+    }else{
+      $("authModal").style.display = "flex";
+      $("app").style.display = "none";
+    }
+  });
+
+  // ---------------- QUESTS (subcollection users/{uid}/quests) ----------------
+  async function loadQuests(){
+    if(!userDocRef) return;
+    const colRef = collection(userDocRef, "quests");
+    const snap = await getDocs(colRef);
+    const quests = [];
+    snap.forEach(d => quests.push({ id:d.id, ...d.data() }));
+    renderQuests(quests);
+  }
+
+  function renderQuests(quests){
+    const box = $("questsList");
+    box.innerHTML = "";
+    if(!quests || quests.length === 0){
+      box.innerHTML = "<div style='opacity:.8;font-size:13px;'>Chưa có quest</div>";
+      return;
+    }
+    quests.forEach(q=>{
+      const row = document.createElement("div");
+      row.innerHTML = `
+        <span style="${q.done?'text-decoration:line-through;opacity:.7;':''}">${q.text}</span>
+        <button class="btn ghost small" data-id="${q.id}">${q.done?'⟲':'✓'}</button>`;
+      box.appendChild(row);
+      row.querySelector("button").onclick = ()=>toggleQuest(q);
+    });
+  }
+
+  async function toggleQuest(q){
+    if(!userDocRef) return;
+    const ref = doc(userDocRef, "quests", q.id);
+    const newDone = !q.done;
+    await setDoc(ref, { done:newDone, text:q.text, createdAt:q.createdAt||new Date() }, { merge:true });
+    if(newDone){
+      // thưởng 5 FP
+      currentUser.fp = (currentUser.fp||0) + 5;
+      await saveUserProfile();
+      showToast("Hoàn thành quest +5 FP","success");
+    }
+    await loadQuests();
+  }
+
+  $("addQuestBtn").onclick = async () => {
+    const text = $("newQuestText").value.trim();
+    if(!text || !userDocRef){ return; }
+    await addDoc(collection(userDocRef,"quests"), {
+      text,
+      done:false,
+      createdAt:new Date()
+    });
+    $("newQuestText").value = "";
+    await loadQuests();
+    showToast("Đã thêm quest");
+  };
+
+  // ---------------- STORE / LOOTBOX (trong code, update user.fp) ----------------
+  const STORE_ITEMS = [
+    { id:1, title:"Lootbox — Basic", cost:40, type:"loot_basic" },
+    { id:2, title:"Lootbox — Advanced", cost:80, type:"loot_adv" },
+    { id:3, title:"Lootbox — Mythic", cost:150, type:"loot_myth" },
+    { id:4, title:"Badge — Elite Focuser", cost:70, type:"badge" }
+  ];
+
+  function renderStore(){
+    const box = $("storeList");
+    box.innerHTML = "";
+    STORE_ITEMS.forEach(it=>{
+      const d = document.createElement("div");
+      d.style.flex = "1 1 140px";
+      d.style.background = "rgba(15,23,42,0.6)";
+      d.style.borderRadius = "12px";
+      d.style.padding = "8px 10px";
+      d.style.border = "1px solid rgba(255,255,255,0.16)";
+      d.innerHTML = `
+        <div style="font-weight:700;">${it.title}</div>
+        <div style="font-size:12px;opacity:.85;">${it.cost} FP</div>
+        <button class="btn ghost small" style="margin-top:6px;width:100%;">Đổi</button>
+      `;
+      const btn = d.querySelector("button");
+      btn.onclick = ()=>redeemItem(it);
+      box.appendChild(d);
+    });
+  }
+
+  async function redeemItem(it){
+    if(!currentUser){ showToast("Hãy đăng nhập","warn"); return; }
+    if((currentUser.fp||0) < it.cost){
+      showToast("Không đủ FP","warn"); return;
+    }
+    currentUser.fp -= it.cost;
+
+    let msg = "Đổi thành công!";
+    if(it.type.startsWith("loot")){
+      const roll = Math.random();
+      let rarity="N", reward = 10;
+      if(it.type==="loot_basic"){
+        if(roll<0.02){ rarity="SSR"; reward=120; }
+        else if(roll<0.15){ rarity="SR"; reward=60; }
+        else if(roll<0.45){ rarity="R"; reward=25; }
+      }
+      if(it.type==="loot_adv"){
+        if(roll<0.05){ rarity="UR"; reward=250; }
+        else if(roll<0.20){ rarity="SSR"; reward=140; }
+        else if(roll<0.50){ rarity="SR"; reward=80; }
+      }
+      if(it.type==="loot_myth"){
+        rarity="UR"; reward=400;
+      }
+      currentUser.fp += reward;
+      msg = `Lootbox ${rarity}! +${reward} FP`;
+    }
+    await saveUserProfile();
+    showToast(msg,"success");
+  }
+
+  // ---------------- LEADERBOARD (top 10 users.fp desc) ----------------
+  async function renderLeaderboard(){
+    const box = $("leaderboardList");
+    box.innerHTML = "";
+    const qCol = query(collection(db,"users"), orderBy("fp","desc"), limit(10));
+    const snap = await getDocs(qCol);
+    let i = 1;
+    snap.forEach(docSnap=>{
+      const u = docSnap.data();
+      const li = document.createElement("li");
+      li.innerHTML = `<span>${i}. ${u.displayName || u.email}</span>
+                      <strong style="float:right">${u.fp||0} FP</strong>`;
+      box.appendChild(li);
+      i++;
+    });
+    if(!box.innerHTML){
+      box.innerHTML = "<li style='opacity:.8;font-size:13px;'>Chưa có người chơi</li>";
+    }
+  }
+
+  // ---------------- TIMER / FOCUS SESSION ----------------
+  function updateTimerUI(){
+    const rem = Math.max(0, targetSec - totalSec);
+    const mm = String(Math.floor(rem/60)).padStart(2,"0");
+    const ss = String(rem%60).padStart(2,"0");
+    $("timeLabel").innerText = `${mm}:${ss}`;
+    const pct = Math.min(1, totalSec/targetSec);
+    $("timerSub").innerText = Math.round(pct*100) + "%";
+
+    const circ = $("progressCircle");
+    const dash = 2 * Math.PI * 45;
+    circ.style.strokeDashoffset = String(dash * (1-pct));
+  }
+
+  function startFocus(){
+    if(!currentUser){
+      showToast("Đăng nhập trước đã","warn"); return;
+    }
+    if(isFocusing){ return; }
+    const mins = Number($("durationSel").value || 25);
+    targetSec = mins * 60;
+    totalSec = 0;
+    currentSubject = $("subjectSel").value || "Chung";
+    isFocusing = true;
+    $("lockOverlay").style.display = "flex";
+    updateTimerUI();
+
+    focusTimer = setInterval(()=>{
+      totalSec++;
+      updateTimerUI();
+      if(totalSec >= targetSec){
+        endSession(true);
+      }
+    }, 1000);
+  }
+
+  async function endSession(success){
+    if(!isFocusing) return;
+    isFocusing = false;
+    clearInterval(focusTimer);
+    $("lockOverlay").style.display = "none";
+
+    if(success){
+      const minutes = Math.round(targetSec/60);
+      currentUser.fp = (currentUser.fp || 0) + minutes;
+      chain = (chain || 0) + minutes;
+
+      // update subjectSeconds
+      subjectSeconds[currentSubject] = (subjectSeconds[currentSubject]||0) + targetSec;
+
+      // streak
+      const todayStr = new Date().toISOString().slice(0,10);
+      if(!lastActiveDay){
+        streak = 1;
+      }else{
+        const last = new Date(lastActiveDay);
+        const today = new Date(todayStr);
+        const diffDays = Math.round((today - last)/86400000);
+        if(diffDays === 0){
+          // same day -> giữ nguyên streak
+        }else if(diffDays === 1){
+          streak = (streak||0) + 1;
+        }else{
+          streak = 1;
+        }
+      }
+      lastActiveDay = todayStr;
+      cycleCount++;
+      $("cycleInfo").innerText = `${cycleCount}/${cyclesGoal}`;
+      $("sound-complete").play().catch(()=>{});
+      showToast(`Hoàn thành +${minutes} FP`,"success");
+
+      await saveUserProfile();
+      await saveDailyStats(targetSec, currentSubject);
+      await renderLeaderboard();
+
+    } else {
+      chain = Math.floor((chain||0)/2);
+      $("sound-fail").play().catch(()=>{});
+      showToast("Phiên bị hủy","warn");
+      await saveUserProfile();
+    }
+  }
+
+  async function saveDailyStats(seconds, subject){
+    if(!userDocRef) return;
+    const today = new Date().toISOString().slice(0,10);
+    const statRef = doc(userDocRef, "dailyStats", today);
+    const snap = await getDoc(statRef);
+    let data = { totalSeconds:0, subjects:{} };
+    if(snap.exists()) data = snap.data();
+    data.totalSeconds = (data.totalSeconds||0) + seconds;
+    data.subjects = data.subjects || {};
+    data.subjects[subject] = (data.subjects[subject]||0) + seconds;
+    await setDoc(statRef, data);
+  }
+
+  $("startBtn").onclick = startFocus;
+  $("stopBtn").onclick = ()=>endSession(false);
+  $("skipBtn").onclick = ()=>endSession(false);
+  $("unlockBtn").onclick = ()=>{ $("lockOverlay").style.display="none"; };
+
+  // --------------- INIT ---------------
+  renderStore();
+  updateTimerUI();
+</script>
+
+</body>
+</html>
